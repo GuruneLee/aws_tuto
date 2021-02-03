@@ -1,0 +1,30 @@
+buildscript {
+    ext {
+        springBootVersion = '2.1.4.RELEASE'
+    }
+    repositories {
+        mavenCentral()
+        jcenter()
+    }
+    dependencies {
+        classpath ("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'org.springframework.boot'
+apply plugin: 'io.spring.dependency-management' //스프링부트의 의존성들을 관리해주는 플러그인 입니당
+
+repositories {
+    mavenCentral()
+    jcenter()
+}
+
+dependencies {
+    compile('org.springframework.boot:spring-boot-starter-web')
+    testCompile('org.springframework.boot:spring-boot-starter-test')
+}
+
+group 'com.chlee.www'
+version '1.0-SNAPSHOT'
