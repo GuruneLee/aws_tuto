@@ -73,8 +73,7 @@
 3. 클래스 코드 작성  
    - /hello요청이 오면 hello문자열을 반환하는 컨트롤러 작성  
     ~~~java
-    //간단한 API용 클래스
-    //단위 테스트 실습용임 ㅇㅇ
+    //HelloController 생성
     package com.chlee.www.springboot.web;
     
     import org.springframework.web.bind.annotation.GetMapping;
@@ -104,6 +103,7 @@
     - `HelloControllerTest`
 3. 클래스에 테스트코드 추가
     ~~~java
+    //HelloControllerTest 생성
     package com.chlee.www.springboot;
 
     import com.chlee.www.springboot.web.HelloController;
@@ -178,6 +178,7 @@
 ### 프로젝트에 롬복 추가하기
 1. `build.gradle`의 dependencies에 코드 추가
 ~~~
+// 롬복 의존성 추가
 complie('org.projectlombok:lombok')
 ~~~
 2. Gradle 새로고침해서 의존성(라이브러리) 내려받기
@@ -201,6 +202,7 @@ complie('org.projectlombok:lombok')
     - 앞으로 모든 응답 Dto는 `dto`패키지에 추가할 것임
 2. `HelloResponseDto`클래스 생성
     ~~~java
+    //HelloControllerDto 생성
     package com.chlee.www.springboot.web.dto;
 
     import lombok.Getter;
@@ -227,6 +229,7 @@ complie('org.projectlombok:lombok')
 1. `현재 프로젝트 > src > test > java > com.chlee.www.springboot`에 `dto`패키지 추가
 2. `HelloResponseDtoTest`클래스 추가
     ~~~java
+    //HelloControllerDtoTest 생성
     package com.chlee.www.springboot.dto;
     
     import com.chlee.www.springboot.web.dto.HelloResponseDto;
@@ -268,7 +271,8 @@ complie('org.projectlombok:lombok')
     
 ### HelloController가 ResponseDto를 사용하게 만들기
 1. `HelloController`에 코드 추가하기  
-    ~~~java
+    ~~~
+    //HelloController 업데이트
     @GetMapping("/hello/dto") 
     //- /hello/dto에 get요청이 오면 아래 함수 출력함
     //name과 amount를 받아서 HelloResponseDto객체를 생성하는 함수 
@@ -283,7 +287,8 @@ complie('org.projectlombok:lombok')
             - 여기선 name이란 이름으로 넘긴 파라미터(@RequestParam("name"))를 메소드 파라미터(String name)에 저장하는 문법!
     
 2. 추가된 API를 테스트하는 코드를 `HelloControllerTest`에 추가
-    ~~~java
+    ~~~
+    //HelloControllerTest 업데이트
     @Test
     public void helloDto가_리턴된다() throws Exception {
         String name = "hello";
