@@ -1,5 +1,6 @@
 package com.chlee.www.springboot.domain.posts;
 
+import com.chlee.www.springboot.domain.BaseTimeEntity;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,7 +14,7 @@ import javax.persistence.Id;
 @Getter //6
 @NoArgsConstructor //5
 @Entity //1
-public class Posts {
+public class Posts extends BaseTimeEntity {
 
     @Id //2
     @GeneratedValue(strategy = GenerationType.IDENTITY) //3
@@ -32,5 +33,10 @@ public class Posts {
         this.title = title;
         this.content = content;
         this.author = author;
+    }
+
+    public void update(String title, String content) {
+        this.title = title;
+        this.content = content;
     }
 }

@@ -146,6 +146,11 @@
             - 우리 코드는 컨트롤러만 사용하기 때문에 선언해도 됨
         3. `@Autowired`
             - 스프링이 관리하는 빈(Bean)을 주입받음
+            - 자바빈(Bean)이란?  
+                : 다음 표준을 만족하는 인스턴스를 의미 [ref](https://stackoverflow.com/questions/3295496/what-is-a-javabean-exactly)
+                1. All properties are private (use getters/setters)
+                2. A public no-argument constructor
+                3. Implements Serializable.
         4. `private MockMvc mvc`
             - 웹 API를 테스트할 때 사용함
             - 스프링 MVC테스트의 시작점

@@ -107,18 +107,6 @@
     - `Posts`클래스 코드  
         ~~~java
         //Posts클래스의 코드
-        package com.chlee.www.springboot.domain.posts;
-
-        import lombok.Builder;
-        import lombok.Getter;
-        import lombok.NoArgsConstructor;
-        
-        import javax.persistence.Column;
-        import javax.persistence.Entity;
-        import javax.persistence.GeneratedValue;
-        import javax.persistence.GenerationType;
-        import javax.persistence.Id;
-        
         @Getter //6
         @NoArgsConstructor //5
         @Entity //1
@@ -240,3 +228,448 @@
         ~~~
 
 ## 03.3 Spring Data JPA 테스트 코드 작성하기
+### 테스트 코드 작성
+- `test`디렉토리에 `domain.posts`패키지를 생성, `PostsRepositoryTest`클래스 생성
+    - `PostsRepositoryTest`코드
+        ~~~
+        //PostsRepositoryTest 코드
+        //save, findAll기능을 테스트함
+        @RunWith(SpringRunner.class)
+        @SpringBootTest //4
+        public class PostsRepositoryTest {
+        
+            @Autowired
+            PostsRepository postsRepository;
+        
+            @After //1
+            public void cleanup() {
+                postsRepository.deleteAll();
+            }
+        
+            @Test
+            public void 게시글저장불러오기() {
+                //given
+                String title = "테스트 게시글";
+                String content = "테스트 본문";
+        
+                postsRepository.save(Posts.builder() //2
+                                        .title(title)
+                                        .content(content)
+                                        .author("whoRU@example.com")
+                                        .build());
+        
+                //when
+                List<Posts> postsList = postsRepository.findAll(); //3
+        
+                //then
+                Posts posts = postsList.get(0);
+                assertThat(posts.getTitle()).isEqualTo(title);
+                assertThat(posts.getContent()).isEqualTo(content);
+            }
+        }
+        ~~~
+    - 코드 설명
+        1. @After
+            - Junit에서 단위 테스트가 끝날 때마다 수행되는 메소드를 지정
+            - 보통은 배포 전 전체 테스트를 수행할 때, 테스트간 데이터 침범을 막기위해 사용
+            - 여러 테스트가 동시에 수행되면 H2에 데이터가 그대로 남아서 다음 테스트실행시 테스트 실패 가능성 있음
+        2. postsRepository.save
+            - 테이블 posts에 insert/update 쿼리를 실행함
+            - id값이 있다면 update, 없다면 insert쿼리가 실행됨
+        3. postsRepository.findAll
+            - 테이블 posts에 있는 모든 데이터를 조회해오는 메소드
+        4. @SpringBootTest
+            - 별다른 설정이 없이 이 어노테이션을 사용하면 H2데이터베이스를 자동으로 실행해줌
+    
+### 실제로 실행된 쿼리 보기
+- SpringBoot에선 application.properties혹은 application.yml등의 파일을 수정해서 쿼리 로그를 확인 할 수 있음
+- `src>main>resouces`에 `application.properties`파일을 생성
+    ~~~
+    spring.jpa.show_sql=true
+  
+    spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5InnoDBDialect
+    ~~~
+    입력
+
+
+## 03.4 등록/수정/조회 API 만들기
+### API를 만들기 위해 필요한 클래스
+1. Dto클래스
+    - Request데이터를 받음
+2. Controller클래스
+    - API요청을 받음 
+3. Service클래스
+    - 트랜잭션,도메인 기능간의 순서를 보장함
+        - 트랜잭션이 뭘까?  
+          : 트랜잭션(Transaction 이하 트랜잭션)이란, 데이터베이스의 상태를 변화시키기 해서 수행하는 작업의 단위를 뜻한다. 간단하게 말해서 아래의 질의어(SQL)를 이용하여 데이터베이스를 접근 하는 것을 의미
+    - **비지니스 로직은 여기에서 처리하지 않음!!**
+        - 비지니스 로직이란?  
+        : 유저 눈엔 보이진 않지만, 유저가 바라는 결과물을 올바르게 도출하기 위해 코드 (Presentation/ View영역과 상반됨)
+    - 그럼 **비지니스 로직은 어디서 처리함?**  
+    : **Domain Model**에서 비지니스 처리를 담당해야함!!
+      
+#### 이해를 위한 막간 Spring 웹 계층 살펴보기!
+![spring웹계층](./springWebArch.jpg)
+- Web Layer
+    - 흔히 사용하는 컨트롤러(@Controller)와 JSP/Freemarker등의 뷰 템플릿 영역
+    - 이 외에 필터(@Filter), 인터셉터, 컨트롤러 어드바이스(@ControllerAdvice)등 외부 요청과 응답에 대한 전반적인 영역을 의미
+    
+- Service Layer
+    - @Service에 사용되는 서비스 영역
+    - 일반적으로 Controller와 Dao중간 영역에서 사용
+    - @Transactional이 사용되어야 하는 영역 
+    
+- Repository Layer
+    - Database와 같이 데이터 저장소에 접근하는 영역
+    - Dao(Data Access Object)가 이 영역에 해당됨
+    
+- Dtos
+    - Dto(Data Transfer Object)는 계층 간에 데이터 교환을 위한 객체. Dtos는 이들의 영역
+    - ex. 뷰 템플릿 엔진에서 사용될 객체. Repository Layer에서 결과로 넘겨준 객체.
+    
+- Domain Model
+    - '도메인'이라는 개발 대상을 모든 사람이 동일한 관점에서 이해할 수 있고 공유할 수 있도록 단순화시킨 것
+    - @Entity가 사용된 영역도 도메인 모델에 속함
+    - 무조건 DB의 테이블과 관계가있는것은 아님 (VO(value object)처럼 값 객체들도 이 영역에 속함)
+    - **여기서 비지니스 로직을 처리해야 함**
+    
+### 등록 기능 만들기
+- `web>PostsApiController`, `service.posts>PostsService`, `web.dto>PostsSaveRequestDto` 클래스 생성
+    1. `PostsApiController`코드
+        ~~~
+        //PostsApiController 코드
+        @RequiredArgsConstructor
+        @RestController
+        public class PostsApiController {
+        
+            private final PostsService postsService;
+        
+            @PostMapping("/api/v1/posts")
+            public Long save(@RequestBody PostsSaveRequestDto requestDto) {
+                return postsService.save(requestDto);
+            }
+        }
+        ~~~
+    2. `PostsService` 코드
+        ~~~
+        //PostsService 코드
+        @RequiredArgsConstructor
+        @Service
+        public class PostsService {
+        
+            private final PostsRepository postsRepository;
+        
+            @Transactional
+            public Long save(PostsSaveRequestDto requestDto) {
+                return postsRepository.save(requestDto.toEntity()).getId();
+            }
+        }
+        ~~~ 
+    3. `PostsSaveRequestDto` 코드
+        ~~~
+        //PostsSaveRequestDto 코드
+        @Getter
+        @NoArgsConstructor
+        public class PostsSaveRequestDto {
+            private String title;
+            private String content;
+            private String author;
+            @Builder
+            public PostsSaveRequestDto(String title, String content, String author) {
+                this.title = title;
+                this.content = content;
+                this.author = author;
+            }
+            
+            public Posts toEntity() {
+                return Posts.builder()
+                        .title(title)
+                        .content(content)
+                        .author(author)
+                        .build();
+            }
+        }
+        ~~~ 
+       
+    - 코드를 다시 한 번 자세히 읽어보는 것을 추천한다
+    - 어차피 다시 코드를 봐야겠지만, 현재 내가 이해한 것을 적어놓겠다. 
+        - Controller는 API요청을 받으면, ~함수를 실행시킨다! 만 명시
+        - Service는 Controller가 명시해놓은 것 중에서 DB에 접근하는 일만 맡아서 함
+        - Dto는 Service가 DB에 넣어야 하는 데이터를 인스턴스로 정의해서 만들어주는 놈 (Entity클래스의 인스턴스를 만드는거임 결국)
+    
+#### Dto클래스와 Entity클래스
+- Entity클래스와 Dto클래스는 모양새가 많이 비슷하다
+    - Dto클래스의 toEntity()함수도 Entity클래스의 인스턴스를 만들어서 반환함
+    - **모양도 비슷한데 왜 Dto클래스를 따로 만들어서 쓸까?**
+    
+##### Entity클래스를 Request/Response클래스로 사용하면 안된다!
+- Entity클래스는 DB와 맞닿은 핵심 클래스 이다!!!
+    - Entity클래스를 기준으로 테이블이 생성되고, 스키마가 변경된다
+- View Layer와 DB Layer의 역할 분리를 철저히 하는것이 좋다
+    - Request와 Response용 Dto는 View를 위한 클래스라 정말 정말 자아아아아주 변경이 필요함
+    - 화면변경은 너무 사소한 기능변경인데, 이 때 마다 Entity클래스를 변경할 수 없다!!
+    
+- Entity 클래스와 Controller에서 쓸 Dto는 꼭 분리해서 사용하자
+
+
+#### Controller 테스트 코드 작성  
+- `src>test>java>com.chlee.www.springboot>web`에 `PostsApiControllerTest`클래스 작성
+    - `PostsApiControllerTest` 코드
+        ~~~
+        @RunWith(SpringRunner.class)
+        @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+        public class PostsApiControllerTest {
+        
+            @LocalServerPort
+            private int port;
+        
+            @Autowired
+            private TestRestTemplate restTemplate;
+        
+            @Autowired
+            private PostsRepository postsRepository;
+        
+            @After
+            public void tearDown() throws Exception {
+                postsRepository.deleteAll();
+            }
+        
+            @Test
+            public void Posts_등록된다() throws Exception {
+                //given
+                String title = "title";
+                String content = "content";
+                PostsSaveRequestDto requestDto = PostsSaveRequestDto.builder()
+                        .title(title)
+                        .content(content)
+                        .author("author")
+                        .build();
+        
+                String url = "http://localhost:" + port + "/api/v1/posts";
+        
+                //when
+                ResponseEntity<Long> responseEntity = restTemplate.postForEntity(url, requestDto, Long.class);
+        
+                //then
+                assertThat(responseEntity.getStatusCode())
+                        .isEqualTo(HttpStatus.OK);
+                assertThat(responseEntity.getBody())
+                        .isGreaterThan(0L);
+        
+                List<Posts> all = postsRepository.findAll();
+                assertThat(all.get(0).getTitle()).isEqualTo(title);
+                assertThat(all.get(0).getContent())
+                        .isEqualTo(content);
+        
+            }
+        }
+        ~~~
+    - 코드 설명
+        - HelloController와 달리 @WebMvcTest를 사용하지 않았음  
+        -> @WebMvcTest는 JPA기능이 작동하지 않음!!!!!!
+        - JPA기능까지 한 번에 테스트 할 때는, @SpringBootTest와 TestRestTemplate를 사용하면 된다!
+    
+### 수정/조회 기능 만들기
+- `web>PostsApiController`, `domain.posts>Posts`, `service.posts>PostsService` 클래스 수정
+- `web.dto>PostsResponseDto`, `web.dto>PostsUpdateRequestDto` 클래스 생성
+    1. `PostsApiController`코드 수정
+        ~~~
+        //PostsApiController 코드
+        @PutMapping("/api/v1/posts/{id}")
+        public Long update(@PathVariable Long id, @RequestBody PostsUpdateRequestDto requestDto) {
+            return postsService.update(id, requestDto);
+        }
+        
+        @GetMapping("/api/v1/posts/{id}")
+        public PostsResponseDto findById (@PathVariable Long id) {
+            return postsService.findById(id);
+        }  
+        ~~~
+    2. `PostsResponseDto` 코드
+        ~~~
+        //PostsResponseDto 코드
+        @Getter
+        public class PostsResponseDto {
+        
+            private Long id;
+            private String title;
+            private String content;
+            private String author;
+            
+            //PostsResponseDto는 Entity의 필드 중 일부만 사용하므로, 
+            //생성자로 Entity를 받아 필드에 값을 넣는다
+            public PostsResponseDto(Posts entity) {
+                this.id = entity.getId();
+                this.title = entity.getTitle();
+                this.content = entity.getContent();
+                this.author = entity.getAuthor();
+            } 
+        }
+        ~~~ 
+    3. `PostsUpdateRequestDto` 코드
+        ~~~
+        //PostsUpdateRequestDto 코드
+        @Getter
+        @NoArgsConstructor
+        public class PostsUpdateRequestDto {
+        
+            private String title;
+            private String content;
+            
+            @Builder
+            public PostsUpdateRequestDto(String title, String content) {
+                this.title = title;
+                this.content = content;
+            }
+        }
+        ~~~ 
+       
+    4. `Posts` 코드 추가
+        ~~~
+        //PostsUpdateRequestDto 코드
+        public void update(String title, String content) {
+            this.title = title;
+            this.content = content;
+        }
+        ~~~ 
+       
+    5. `PostsService` 코드 추가
+        ~~~
+        @Transactional
+        public Long update(Long id, PostsUpdateRequestDto requestDto) {
+            Posts posts = postsRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("해당 게시글이 없습니다 id=" + id));
+            posts.update(requestDto.getTitle(), requestDto.getContent());
+            //근데.. 데이터베이스에 쿼리를 날리는 부분이 없다?
+            //PostsRepository를 이용해서 DB도 업데이트 해야하는거 아닌가?
+            return id;
+        }
+        
+        public PostsResponseDto findById (Long id) {
+            Posts entity = postsRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("해당 게시글이 없습니다 id=" + id));
+            
+            return new PostsResponseDto(entity);
+        }
+        ~~~
+       
+    - 코드설명
+        1. `PostsService`의 update에서 데이터베이스에 쿼리를 날리는 부분이 없음 
+            - **JPA의 영속성 컨텍스트** 때문임
+            - 영속성 컨텍스트: 엔티티를 영구 저장하는 환경(논리적 개념)
+            - JPA의 핵심 내용은 엔티티가 영속성 컨텍스트에 포함되어있냐 아니냐로 갈리게 됨
+                - JPA의 **엔티티 매니저(Entity Manager)가 활성화**된 상태(Spring Data Jpa에선 기본 옵션 on)로 
+                  **트랜잭션 안에서 데이터베이스에서 데이터를 가져오면** 이 데이터는 영속성 컨텍스트가 유지되어있는 상태
+                - 이 상태에서 해당 데이터 값을 변경하면, **트랜잭션이 끝나는 시점에 해당 테이블에 변경분을 반영**함
+                - 이를 **더티체킹 dirty checking**이라고 부름 [(링크)](https://jojoldu.tistory.com/415)
+                    
+#### Controller 테스트코드 추가
+- PUT테스트
+~~~
+@Test
+public void Posts_수정된다() throws Exception {
+    //given
+    Posts savedPosts = postsRepository.save(Posts.builder()
+            .title("title")
+            .content("content")
+            .author("author")
+            .build());
+
+    Long updateId = savedPosts.getId();
+    String expectedTitle = "title2";
+    String expectedContent = "content2";
+
+    PostsUpdateRequestDto requestDto = PostsUpdateRequestDto.builder()
+            .title(expectedTitle)
+            .content(expectedContent)
+            .build();
+
+    String url = "http://localhost:" + port + "api/v1/posts/" + updateId;
+
+    HttpEntity<PostsUpdateRequestDto> requestEnity = new HttpEntity<>(requestDto);
+
+    //when
+    ResponseEntity<Long> responseEntity = restTemplate.exchange(url, HttpMethod.PUT, requestEnity, Long.class);
+
+    //then
+    assertThat(responseEntity.getStatusCode())
+            .isEqualTo(HttpStatus.OK);
+    assertThat(responseEntity.getBody())
+            .isGreaterThan(0L);
+
+    List<Posts> all = postsRepository.findAll();
+    assertThat(all.get(0).getTitle())
+            .isEqualTo(expectedTitle);
+    assertThat(all.get(0).getContent())
+            .isEqualTo(expectedContent);
+}
+~~~
+
+- GET테스트는 어.. p.118을 참고해주세요
+
+
+## 03.5 JPA Auditin으로 생성시간/수정시간 자동화하기
+- JPA Auditing을 이용하면 DB에 들어가는 생성시간/수정시간 입력을 자동화할 수 있다
+### LocalDate사용  
+Java8 이상에서의 날짜타입 **LocalDate**와 **LocalDateTime** 라이브러리를 무조건 사용해야함
+1. `domain>BaseTimeEntity`클래스 생성
+    ~~~
+    //BaseTimeEntity 클래스 생성
+    @Getter
+    @MappedSuperclass //1
+    @EntityListeners(AuditingEntityListener.class) //2
+    public class BaseTimeEntity {
+    
+        @CreatedDate //3
+        private LocalDateTime createdDate;
+        
+        @LastModifiedDate //4
+        private LocalDateTime modifiedDate;
+    }
+    ~~~
+    - 코드 설명
+        1. @MappedSuperclass
+            - JPA Entity클래스들이 BaseTimeEntity를 상속할 경우, 필드도 칼럼으로 인식하게됨 (createdDate, modifiedDate)
+        2. @EntityListeners(AuditingEntityListener.class)
+            - BaseTimeEntity 클래스에 Auditing기능을 포함시킴
+        3. @CreatedDate
+            - Entity가 생성되어 저장될 때 시간이 자동 저장됨
+        4. @LastModifiedDate
+            - 조회한 Entity의 값을 변경할 때 시간이 자동 저장됨
+    
+2. `Posts`클래스가 `BaseTimeEntity`를 상속받도록 변경
+    ~~~
+    public class Posts extends BaseTimeEntity {
+        ...
+    }
+    ~~~
+   
+3. JPA Auditing어노테이션들을 모두 활성화
+    - Application 클래스에 활성화 어노테이션 추가
+        ~~~
+        @EnableJpaAuditing
+        ~~~
+    
+#### JPA Auditing 테스트코드 추가하기 (on PostsRepositoryTest)
+- `PostsRepositoryTest`코드 수정
+    ~~~
+    @Test
+    public void BaseTimeEntity_등록() {
+        //given
+        LocalDateTime now = LocalDateTime.of(2021,2,15,0,0,0);
+        postsRepository.save(Posts.builder().title("t").content("t").author("a").build());
+
+        //when
+        List<Posts> postsLists = postsRepository.findAll();
+
+        //then
+        Posts posts = postsLists.get(0);
+
+        System.out.println(">>>>>> createDate=" + posts.getCreatedDate() + ", modifiedDate=" + posts.getModifiedDate());
+
+        assertThat(posts.getCreatedDate()).isAfter(now);
+        assertThat(posts.getModifiedDate()).isAfter(now);
+    }
+    ~~~
+  
+- 앞으로 추가될 Entity들은 `BaseTimeEntity`만 상속받으면 이짓거리 안해도 생성시간/수정시간 알아서 다 저장됨 개꿀
