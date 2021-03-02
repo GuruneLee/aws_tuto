@@ -28,6 +28,7 @@ dependencies {
     compile('com.h2database:h2') //2
     testCompile('org.springframework.boot:spring-boot-starter-test')
     compile('org.springframework.boot:spring-boot-starter-mustache')
+    compile('org.springframework.boot:spring-boot-starter-oauth2-client')
 }
 
 group 'com.chlee.www'
