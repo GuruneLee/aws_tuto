@@ -411,3 +411,138 @@ public String index(Model model) {
         - 세션에 저장된 값이 있을 때만, model에 userName으로 등록
         - 세션에 저장된 값이 없으면 로그인 버튼이 보이게쬬?
     
+
+## 05.4 어노테이션 기반으로 개선하기
+- 같은 코드가 반복되는 부분을 개선해보자
+~~~
+SessionUser user = (SessionUser) httpSession.getAttribute("user");
+~~~
+- 세션값을 가져오는 부분을 보면, index메소드 외에 다른 컨트롤러와 메소드에서 세션값이 필요할 때마다 직접 세션에서 값을 가져와야함
+- -> 메소드 인자로 세션값을 바로 받을 수 있도록 변경하자
+1. `config.auth`패키지에 `@LoginUser`어노테이션 생성
+~~~java
+@Target(ElementType.PARAMETER)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface LoginUser {
+}
+~~~
+- 코드 설명
+    1. @Target(ElementType.PARAMETER)
+        - 이 어노테이션이 생성될 수 있는 위치 지정
+        - PARAMETER -> 메소드의 파라미터로 선언된 객체에서만 사용할 수 있음
+        - 이 외에도 TYPE등, 클래스 선언문에 쓸 수 있는 값도 있다용
+    2. @interface
+        - 이 파일을 어노테이션 클래스로 지정함
+        - LoginUser라는 이름을 가진 어노테이션이 생성된거임!!
+    
+2. 같은 위치에 `LoginUserArgumentResolver`생성하기
+- Login-UserArgumentResolver 라는 HandlerMethodArgumentResolver 인터페이스를 구현한 클래스
+- HandlerMethodArgumentResolver -> 조건에 맞는 경우 메소드가 있다면 HandlerMethodArgumentResolver의 구현체가 지정한 값으로 해당 메소드의 파라미터로 넘길 수 있음
+~~~java
+@RequiredArgsConstructor
+@Component
+public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver {
+
+    private final HttpSession httpSession;
+
+    @Override
+    public boolean supportsParameter(MethodParameter parameter) { //1
+        boolean isLoginUserAnnotation = parameter.getParameterAnnotation(LoginUser.class) != null;
+        boolean isUserClass = SessionUser.class.equals(parameter.getParameterType());
+        return isLoginUserAnnotation&&isUserClass;
+    }
+
+    @Override //2
+    public Object resolveArgument (MethodParameter parameter, ModelAndViewContainer mavContainer, NativeWebRequest webRequest, WebDataBinderFactory binderFactory) throws Exception {
+        return httpSession.getAttribute("user");
+    }
+}
+~~~
+- 코드 설명
+    1. supportsParameter()
+        - 컨트롤러 메서드의 특정 파라미터를 지원하는지 판단함
+        - 여기서는 파라미터에 @LoginUser어노테이션이 붙어있고, 파라미터 클래스 타입이 SessionUser.class인 경우 true를 반환함
+    2. resolveArgument()
+        - 파라미터에 전달할 객체를 생성함
+        - 여기서는 세션에서 객체를 가져옴
+    
+
+3. `config`패키지에 `WebConfig`생성 (WebMvcConfigurer)
+- LoginUserArgumentResolver가 스프링에서 인식될 수 있도록 해보자
+~~~java
+@RequiredArgsConstructor
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    private final LoginUserArgumentResolver loginUserArgumentResolver;
+
+    @Override
+    public void addArgumentResolvers(List<HandlerMethodArgumentResolver> argumentResolvers) {
+        argumentResolvers.add(loginUserArgumentResolver);
+    }
+}
+~~~
+- HandleraMethodArgumentResolver는 항상 WebMvcConfigurer의 'addArgumentResolvers()'를 통해 추가해야 함
+- 다른 HandleraMethodArgumentResolver가 필요하면 같은 방법으로 추가해주면 댐댐대대대댐
+
+
+4. `IndexController`의 코드에서 반복되는 부분들을 모두 @LoginUser로 개선하자
+~~~
+...
+    @GetMapping("/")
+    public String index(Model model, @LoginUser SessionUser user) { //1
+        model.addAttribute("posts", postsService.findAllDesc());
+
+        if (user != null) {
+            model.addAttribute("userName", user.getName());
+        }
+
+        return "index";
+    }
+...
+~~~
+- 코드 설명
+    1. @LoginUser SessionUser user
+        - 기존에 (User) httpSession.getAttribute("user")로 가져오던 세션 정보 값이 개선됨
+        - 이제는 어느 컨트롤러에서든지 @LoginUser만 사용하면 세션 정보를 가져올 수 있음
+    
+
+## 05.5 세션 저장소로 데이터베이스 사용하기
+- 문제점1: **애플리케이션을 재실행하면 로그인이 풀려벌임!!?!?!??!????!?!!!!!!!!!!**
+    - 세션이 내장 톰캣의 메모리에 저장되게 때문임
+    - 배포할 때마다 톰캣이 재시작 됨
+    
+- 문제점2: 두 대 이상의 서버에서 서비스하고 있다면 **톰캣마다 세션 동기화**설정을 해줘야함
+
+- 현업에서 사용해는 해결책
+    1. 톰캣 세션 사용
+        - 별다른 설정 x
+        - 세션 공유를 위한 추가 설정이 필요함
+    2. MySQL과 같은 데이터베이스를 세션 저장소로 사용
+        - 여러 WAS간 공용 세션을 사용할 수 있는 가장 쉬운 방법
+        - 로그인 요청마다 DB IO가 발생함 -> 성능상 이슈 발생 가능
+        - 로그인 요청이 많이 없는 '백오피스', '사내 시스템'등에서 사용
+    3. Redis, Memcached와 같은 메모리DB를 세션 저장소로 사용
+        - B2C서비스에서 가장 많이 사용하는 방식
+        - 실제 서비스로 사용하려면 외부 메모리 서버가 필요함 (not Embedded-Redis)
+    
+- 여기선 `2`번 방법인 **데이터베이스를 세션 저장소로 사용**하는 방식을 선택
+    - 비용적고, 간단, 사용자별로 없잖슴 ㅋㅋㄹㅃㅃ
+    
+### spring-session-jdbc 등록
+1. `build.gradle`에 'spring-session-jdbc'등록하기
+~~~
+compile('org.springframework.session:spring-session-jdbc')
+~~~
+2. `application.properties`에 세션 저장소를 jdpc로 선택하도록 코드 추가
+~~~
+spring.session.store-type=jdbc
+~~~
+3. 앱 실행 후 로그인 테스트하고 h2-console확인하기
+- SPRING_SESSION, SPRING_SESSION_ATTRIBUTES 테이블이 생겨야 함 (JPA로 인해 자동 생성)
+- 한 개의 세션이 등록되어 있어야 함
+- 물론 지금은 h2를 사용하고 있으니, 재시작 시 세션이 풀리지만 / 이후 AWS로 배포하게 되면 RDS를 사용하게 되므로 세션이 풀리지 않게됨
+    - 기반코드 작성한거임~
+
+
+## 05.6 네이버 로그인 추가
+- 안할거임
