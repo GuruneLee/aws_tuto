@@ -173,3 +173,25 @@ spring.profiles.include=oauth,real-db
 spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5InnoDBDialect
 spring.session.store-type=jdbc
 ~~~
+
+### EC2 설정
+- RDS 접속 정보는 중요하니, EC2서버에 직접 설정파일을 둔다
+1. `~/app`에 `application-real-db.properties`생성
+~~~
+spring.jpa.hibernate.ddl-auto=none
+spring.datasource.url=jdbc:mariadb://freelec-springboot2-webservice.cmys0ityt4qt.ap-northeast-2.rds.amazonaws.com:3306/freelec-springboot2-webservice
+spring.datasource.username=db계정
+spring.datasource.password=db계정 비밀번호
+spring.datasource.driver-class-name=org.mariadb.jdbc.Driver
+~~~
+2. `deploy.sh`가 real profile을 쓸 수 있도록 하자
+~~~
+...
+nohup java -jar \
+-Dspring.config.location=classpathL/application.properties,/home/ec2-user/app/application-oauth.properties,/home/ec2-user/app/application-real-db.properties \
+-Dspring.profiles.active=real \
+$REPOSITORY/$JAR_NAME 2>&1 &
+~~~
+- -Dspring.profiles.active=real
+    - application-real.properties를 활성화시킴
+    - 요 안에 spring.profiles.include=oauth,real-db옵션 때문에 real-db역시 함께 활성화대상에 포함됨
