@@ -97,3 +97,79 @@ nohup java -jar \
       - application.properties와 application-oauth.properties의 위치를 지정함
       - classpath가 붙으면 안에 있는 resources디렉토리를 기준으로 경로가 생성됨
       - oauth파일은 외부에 위치해있으므로 절대경로를 사용함
+    
+## 08.4 스프링 부트 프로젝트로 RDS 접근하기
+- RDS는 MariaDB를 사용하므로 스프링부트 프로젝트를 MariaDB로 실행하기 위해서 할 작업이 있음
+1. 테이블 생성
+    - H2에서 자동 생성해주던 테이블들을 MariaDB에선 직접 퀴리를 이용해 생성해야 함
+2. 프로젝트 설정
+    - 자바 프로젝트가 MariaDB에 접근 하려면 DB드라이버가 필수. 이를 추가해주자
+3. EC2 설정
+    - DB의 접속정보는 중요하게 보호해야 할 정보. 따라서 이를 EC2서버 내부에서 관리하도록 하자
+    
+### RDS 테이블 생성
+- JPA가 사용될 엔티티 테이블과 스프링 세션이 사용될 테이블 2가지 종류의 테이블 생성
+- JPA가 사용할 테이블은 **테스트 코드 수행 시 로그로 생성되는 쿼리를 사용하면 됨**
+~~~
+create table posts (
+    id bigint not null auto_increment, 
+    created_date datetime, 
+    modified_date datetime,
+    author varchar(255),
+    content TEXT not null,
+    title varchar(500) not null,
+    primary key (id)
+) engine=InnoDB;
+~~~
+
+~~~
+create table user (
+    id bigint not null auto_increment, 
+    created_date datetime, 
+    modified_date datetime,
+    email varchar(255) not null,
+    name varchar(255) not null,
+    picture varchar(255),
+    role varchar(255) not null,
+    primary key (id)
+) engine=InnoDB;
+~~~
+
+- 스프링 세션 테이블은 다음 쿼리를 이용하자
+~~~
+CREATE TABLE SPRING_SESSION (
+	PRIMARY_ID CHAR(36) NOT NULL,
+	SESSION_ID CHAR(36) NOT NULL,
+	CREATION_TIME BIGINT NOT NULL,
+	LAST_ACCESS_TIME BIGINT NOT NULL,
+	MAX_INACTIVE_INTERVAL INT NOT NULL,
+	EXPIRY_TIME BIGINT NOT NULL,
+	PRINCIPAL_NAME VARCHAR(100),
+	CONSTRAINT SPRING_SESSION_PK PRIMARY KEY (PRIMARY_ID)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC;
+
+CREATE UNIQUE INDEX SPRING_SESSION_IX1 ON SPRING_SESSION (SESSION_ID);
+CREATE INDEX SPRING_SESSION_IX2 ON SPRING_SESSION (EXPIRY_TIME);
+CREATE INDEX SPRING_SESSION_IX3 ON SPRING_SESSION (PRINCIPAL_NAME);
+
+CREATE TABLE SPRING_SESSION_ATTRIBUTES (
+	SESSION_PRIMARY_ID CHAR(36) NOT NULL,
+	ATTRIBUTE_NAME VARCHAR(200) NOT NULL,
+	ATTRIBUTE_BYTES BLOB NOT NULL,
+	CONSTRAINT SPRING_SESSION_ATTRIBUTES_PK PRIMARY KEY (SESSION_PRIMARY_ID, ATTRIBUTE_NAME),
+	CONSTRAINT SPRING_SESSION_ATTRIBUTES_FK FOREIGN KEY (SESSION_PRIMARY_ID) REFERENCES SPRING_SESSION(PRIMARY_ID) ON DELETE CASCADE
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC;
+~~~
+
+### 프로젝트 설정
+1. MariaDB 드라이버를 build.gradle에 추가하기
+~~~
+compile("org.mariadb.jdbc:mariadb-java-client")
+~~~
+2. 서버에서 구동될 환경 구성
+- `src/main/resources`에 `application-real.properties`추가하기
+~~~
+spring.profiles.include=oauth,real-db
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL5InnoDBDialect
+spring.session.store-type=jdbc
+~~~
